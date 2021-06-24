@@ -8,16 +8,18 @@ import gym
 class ODGPF:
     def __init__(self):
         self.MU = 1.0489
+        self.GRAVITY = 9.806
         self.MAX_RANGE = 30.0
         self.GAMMA = 1.0
+        
         self.CAR_WIDTH = 1.0
+        self.CAR_MASS = 3.463388126201571
         
         self.SCAN_INTERVAL = 0.00435185185
         self.OBS_THRESHOLD = 5.0
         self.DETECTION_START = 179
         self.DETECTION_END = 899
 
-        self. GOAL = [0.2, 1.0]
     def idx2deg(self,idx):
         _res = (idx-540) * self.SCAN_INTERVAL
         return _res
@@ -43,7 +45,7 @@ class ODGPF:
                     obstacle_count += 1
                     end_idx = i
 
-                    avg_distance = np.average(scan[start_idx+end_idx])
+                    avg_distance = np.average(scan[start_idx:end_idx])
                     avg_angle = self.idx2deg(end_idx - start_idx)
                     center_angle = self.idx2deg((end_idx + start_idx)//2)
 
@@ -81,24 +83,61 @@ class ODGPF:
     def total_field(self, att_field_list, rep_field_list):
         return att_field_list + rep_field_list
     
-    def plan(self, scan, goal):
+    def planner(self, obs):
+        goal = [0,9]
+        self.obs = obs
+        scan = obs['scans'][0]
+        
+        goal_theta = self.get_Goal(goal)
+        
         obstacles = self.define_obstacles(scan)
 
         rep_list = self.rep_field(obstacles)
-        att_list = self.att_field(goal)
+        att_list = self.att_field(goal_theta)
         total_list = self.total_field(att_list, rep_list)
         set_heading = self.idx2deg(np.argmin(total_list))
-
-        return [set_heading,1.0]
-    
-    # def set_maxspeed(self):
+        speed = self.set_speed()
         
+        return [set_heading,speed]
+    
+    def set_speed(self):
+        max_speed = self.set_maxspeed()
+        current_speed = self.obs['linear_vels_x'][0]
+
+        if current_speed < max_speed:
+            current_speed += 1.0
+            return current_speed
+        elif current_speed == max_speed:
+            return current_speed
+        else:
+            current_speed = current_speed * 0.9
+            return current_speed
+
+
+    def get_Goal(self, goal_cord):
+        current_x = self.obs['poses_x'][0]
+        current_y = self.obs['poses_y'][0]
+        
+        target_x = goal_cord[0]
+        target_y = goal_cord[1]
+
+        dx = target_x - current_x
+        dy = target_y - current_y
+        degree = np.arctan2(dy,dx)
+
+        return degree
+    
+    def set_maxspeed(self):
+        front_distance = self.obs['scans'][0][539]
+
+        maximum_speed = np.sqrt(2*self.MU*self.GRAVITY*front_distance)
+        return maximum_speed
         
 
 if __name__ =='__main__':
     
     work = {'mass': 3.463388126201571, 'lf': 0.15597534362552312, 'tlad': 0.82461887897713965, 'vgain': 0.90338203837889}
-    with open('map_conf.yaml') as file:
+    with open('config_example_map.yaml') as file:
         conf_dict = yaml.load(file, Loader=yaml.FullLoader)
     conf = Namespace(**conf_dict)
 
@@ -109,11 +148,10 @@ if __name__ =='__main__':
     
     laptime = 0.0
     start = time.time()
-
+    goal_pos = [0,9]
     while not done:
-        scan = obs['scans'][0]
-        speed, steer = ODGPF.planner(scan, [0,9])
-        speed, steer = [1.0, 0]
+        speed, steer = odg_pf.planner(obs)
+        # speed, steer = [1.0, 0]
         print("X : ", obs['poses_x'][0])
         print("Y : ", obs['poses_y'][0])
         obs, step_reward, done, info = env.step(np.array([[steer, speed]]))
