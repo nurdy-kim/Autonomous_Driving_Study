@@ -19,10 +19,17 @@ class PurePursuit:
         # const for cars
         self.wb = wb
         self.Ld = 2.0
+        self.MU = 1.0489
+        self.MASS = 3.74
 
         # current state of cars
-        self.current_speed = 0
+        self.current_velocity = 5.0
         self.current_steering = 0
+
+        # const for calc
+        self.PI = 3.141592
+        self.GRAVITY_ACC = 9.81
+        
     
     def load_waypoints(self,conf):
         file_wps = np.loadtxt(conf.wpt_path, delimiter=conf.wpt_delim, skiprows=conf.wpt_rowskip)
@@ -35,57 +42,32 @@ class PurePursuit:
         _dy = origin[1] - target[1]
 
         return np.sqrt(_dx**2 + _dy**2)
-
-    def find_nearest_wp(self):
-        wp_idx = self.current_wp
-        self.nearest_distance = self.get_distance(self.current_pos, self.waypoints[wp_idx])
-        
-        while True:
-            wp_idx += 1
-            if wp_idx >= len(self.waypoints) - 1:
-                wp_idx = 0
-            
-            temp_dist = self.get_distance(self.current_pos, self.waypoints[wp_idx])
-
-            if temp_dist < self.nearest_distance:
-                self.nearest_distance = temp_dist
-                self.current_wp = wp_idx
-            elif temp_dist > (self.nearest_distance) or (wp_idx == self.current_wp):
-                break
-    def find_lookahead_wp(self):
-        wp_idx = self.current_wp
-        while True:
-            if wp_idx >= len(self.waypoints) - 1:
-                wp_idx = 0
-            
-            distance = self.get_distance(self.current_pos, self.waypoints[wp_idx])
-
-            if distance >= self.Ld:
-                break
-            
-            wp_idx += 1
-        
-        self.desire_wp = wp_idx
-    def steering_controller(self):
-        _dx = self.current_pos[0]  - self.waypoints[self.desire_wp][0]
-        _dy = self.current_pos[1]  - self.waypoints[self.desire_wp][1]
-        _I = np.sqrt(_dx**2 + _dy**2)
-
-        _k = (2*_dx) / (_I**2)
-        steering = np.arctan(_k*self.wb)
-
-        return steering
     
-    # def speed_controller(self, obs):
-    #     front = obs['scans'][0][359]
+    def find_current_pos(self):
+        _diffs = []
+        
+        for i in range(self.waypoints.shape[0]):
+            _diffs.append(self.get_distance(self.current_pos[0:2],self.waypoints[i,:]))
+        
+        _ld_diffs = []
+        for i in range(self.waypoints.shape[0]):
+            _ld_diffs.append(np.abs(_diffs[i] - self.Ld))
+        
+        # goal = np.argmin(_ld_diffs)
+        print("Ld :", np.argmin(_ld_diffs), "curr :", np.argmin(_diffs))
+
+        self.current_wp = np.argmin(_diffs)
+        self.desire_wp = np.argmin(_ld_diffs)
+
+        
     def planner(self, obs):
         self.current_pos = [obs['poses_x'][0],obs['poses_y'][0],obs['poses_theta'][0]]
-        self.find_nearest_wp()
-
-        self.find_lookahead_wp()
-        steering = self.steering_controller()
+        self.find_current_pos()
+        # print("steering : ", steering, "velocity : ", velocity)
+        # print(self.desire_wp)
         
-        return [1.0,steering]
+        return [1.0,0.0]
+
 
 
 # Main
